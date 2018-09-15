@@ -1,0 +1,2 @@
+jupyter==1.0.0
+tabula-py==1.2.0
