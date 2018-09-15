@@ -71,7 +71,6 @@ def process_pdf(pdf_filename):
 
                 diff = after['top'] - prev['top']
                 if diff > 20 and after['top'] > table_start and 'RBC' not in after['text']:
-                    print(f"Found space between {after['text']} and {prev['text']} of {diff}")
                     table_end = after['top']
                     break
 
@@ -95,7 +94,6 @@ def process_pdf(pdf_filename):
     df_T = df_T.drop(df_T.index[[0]])
     df_T = df_T.reset_index(drop=True)
 
-    return df_T.to_dict('records')[0]
-
-
-print(process_pdf('../sample-data/B1705_2000560947.pdf'))
+    parsed_pdf = df_T.to_dict('records')[0]
+    parsed_pdf['filename'] = pdf_filename.split('/')[-1]
+    return parsed_pdf
