@@ -1,0 +1,159 @@
+---
+title: "scrapeheartpdf"
+author: "Rebecca Johnston"
+date: "September 15, 2018"
+output: html_document
+---
+
+Our aim is to scrape data from haematology pdf documents using R.
+
+## Scraping pdfs
+
+First attempt: scraping pdf using the R package `tm` which requires the external application [xpdfreader](http://www.xpdfreader.com/download.html) which is a bit of a pain to install for little gain (compared to the alternative package, `pdftools`, below).
+
+```{r}
+# install.packages("tm")
+# library("tm")
+# 
+# files <- list.files(path = "data/", pattern = "pdf$")
+# read <- readPDF(control = list(text = "-layout"))
+# testdoc <- Corpus(URISource("data/B1705_2000560947.pdf"),
+#                   readerControl = list(reader = read))
+# doc <- content(testdoc[[1]])
+# head(doc)
+```
+
+Second attempt: scraping pdf using the R package `pdftools`. I obtain similar results to `tm`, which is ultimately one big string you need to manipulate. Good help from [this](http://www.brodrigues.co/blog/2018-06-10-scraping_pdfs/) blog.
+
+```{r}
+library("pdftools")
+library("tidyverse")
+
+# Read in sample pdf
+raw_table <- pdf_text("../sample-data/B1705_2000606271.pdf")
+
+# Check structure
+head(raw_table)
+class(raw_table)
+raw_table[[1]]
+
+# Split character based on new line
+split_table <- str_split(raw_table, "\r\n", simplify = TRUE)
+```
+
+```{r}
+# Collect haematology data
+table_start <- stringr::str_which(split_table, "RBC")
+table_end <- stringr::str_which(split_table, "BLOOD SMEAR")
+haem_table <- split_table[1, (table_start):(table_end)]
+# Replace white space with underscore then split based on underscore 
+haem_table <- str_replace_all(haem_table, "\\s{2,}", "_")
+haem_table <- str_split_fixed(haem_table, "_", n = 4)
+haem_table <- as.data.frame(haem_table)
+# Keep only first two columns
+haem_table <- haem_table %>% select(V1, V2)
+```
+
+```{r}
+# Collect header information for metadata
+meta_start <- stringr::str_which(split_table, "Animal ID")
+meta_end <- stringr::str_which(split_table, "Reported")
+meta_table <- split_table[1, (meta_start):(meta_end)]
+# Replace white space with underscore then split based on underscore 
+meta_table <- str_replace_all(meta_table, "\\s{2,}", "_")
+# Only keep IDs we need within the string
+meta_table[1] <- gsub("(^.*)(Animal ID.*$)", "\\2", meta_table[1])
+meta_table[2] <- gsub("(^.*)(Unique ID.*$)", "\\2", meta_table[2])
+# Add underscore between collected and received entries
+meta_table[3] <- gsub("(^Collected.*)\\s(Received.*$)", "\\1_\\2", meta_table[3])
+# Separate the strings
+meta_table <- str_split(meta_table, "_", simplify = FALSE)
+meta_table <- unlist(meta_table)
+meta_table <- as.data.frame(meta_table)
+meta_table <- str_split_fixed(meta_table$meta_table, ":\\s*", n = 2)
+meta_table <- as.data.frame(meta_table)
+```
+
+```{r}
+# Collect footer information, i.e. the "Examination" entry across multiple lines
+foot_start <- stringr::str_which(split_table, "EXAMINATION")
+foot_end <- stringr::str_which(split_table, "For tests indicated by a hash")
+foot_table <- split_table[1, (foot_start):(foot_end - 1)]
+foot_table <- str_replace_all(foot_table, "\\s{2,}", "")
+# Separate "Examination" variable title
+foot_table[1] <- gsub("(^EXAMINATION)(.*$)", "\\1_\\2", foot_table[1])
+# Store the remainder as one long string
+foot_table <- unlist(foot_table)
+foot_table <- stringr::str_c(foot_table, sep = "", collapse = " ")
+foot_table <- str_split(foot_table, "_", simplify = FALSE)
+foot_table <- unlist(foot_table)
+foot_table <- as.data.frame(matrix(foot_table, ncol = 2, byrow = TRUE))
+```
+
+So now we end up with three tables that we wish to join, `meta_table`, `haem_table`, and `foot_table`. The final step is to join them all together!
+```{r}
+bind_rows(meta_table, haem_table, foot_table)
+```
+
+## Function to clean pdf
+
+Now we need to create a function to clean a pdf, that utilises all the above code, but performs everything in one step.
+```{r}
+clean_pdf <- function(raw_pdf){
+  split_table <- str_split(raw_pdf, "\r\n", simplify = TRUE)
+  
+  # Collect haematology data
+  table_start <- stringr::str_which(split_table, "RBC")
+  table_end <- stringr::str_which(split_table, "BLOOD SMEAR")
+  haem_table <- split_table[1, (table_start):(table_end)] %>% 
+    str_replace_all(., "\\s{2,}", "_") %>%
+    str_split_fixed(., "_", n = 4) %>%
+    as.data.frame() %>%
+    select(V1, V2)
+  
+  # Collect header information for metadata
+  meta_start <- stringr::str_which(split_table, "Animal ID")
+  meta_end <- stringr::str_which(split_table, "Reported")
+  meta_table <- split_table[1, (meta_start):(meta_end)] %>%
+    str_replace_all(., "\\s{2,}", "_")
+  meta_table[1] <- gsub("(^.*)(Animal ID.*$)", "\\2", meta_table[1])
+  meta_table[2] <- gsub("(^.*)(Unique ID.*$)", "\\2", meta_table[2])
+  meta_table[3] <- gsub("(^Collected.*)\\s(Received.*$)", "\\1_\\2",
+                        meta_table[3])
+  meta_table <- str_split(meta_table, "_", simplify = FALSE) %>%
+    unlist(.) %>%
+    str_split_fixed(., ":\\s*", n = 2) %>%
+    as.data.frame()
+
+  # Collect footer information
+  foot_start <- stringr::str_which(split_table, "EXAMINATION")
+  foot_end <- stringr::str_which(split_table, "For tests indicated by a hash")
+  foot_table <- split_table[1, (foot_start):(foot_end - 1)] %>%
+    str_replace_all(., "\\s{2,}", "")
+  foot_table[1] <- gsub("(^EXAMINATION)(.*$)", "\\1_\\2", foot_table[1])
+  foot_table <- unlist(foot_table) %>%
+    stringr::str_c(., sep = "", collapse = " ") %>%
+    str_split(., "_", simplify = FALSE) %>%
+    unlist(.)
+  foot_table <- as.data.frame(matrix(foot_table, ncol = 2, byrow = TRUE))
+
+  # Bind tables
+  pdf_table <- bind_rows(meta_table, haem_table, foot_table)
+}
+
+# Test out the function
+test <- clean_pdf(raw_table)
+```
+
+Now the REAL test is to try our code out on the other pdf files...
+```{r}
+raw_table_947 <- pdf_text("../sample-data/B1705_2000560947.pdf")
+test_947 <- clean_pdf(raw_table_947)
+
+raw_table_948 <- pdf_text("../sample-data/B1705_2000560948.pdf")
+test_948 <- clean_pdf(raw_table_948)
+
+raw_table_949 <- pdf_text("../sample-data/B1705_2000560949.pdf")
+test_949 <- clean_pdf(raw_table_949)
+```
+
