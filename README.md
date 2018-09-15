@@ -12,7 +12,7 @@ Along with this you also have to install Java 7 or 8.
 
 ## Running instructions
 ```
-python -m python_read_data
+python -m python_read_data --file-dir='sample-data'
 ```
 
-This will take all the pdfs from the specified directory and output a 'output.csv'
+This will take all the pdfs from a specified directory and output a 'output.csv' file.

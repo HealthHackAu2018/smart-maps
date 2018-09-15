@@ -1,6 +1,7 @@
 import os 
 from multiprocessing import Pool
 import logging
+import argparse
 
 import pandas as pd
 from tqdm import tqdm
@@ -9,10 +10,16 @@ from python_pdf_parser.smart_pdf_parser import process_pdf
 
 
 if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description='Process PDF files')
+    parser.add_argument('--file-dir', type=str, help='Directory with multiple PDF files',
+                        dest='file_dir', default='sample-data')
+    args = parser.parse_args()
+
+    file_dir = args.file_dir
     pdf_files = []
-    for file in os.listdir("sample-data/"):
+    for file in os.listdir(f"{file_dir}"):
         if file.endswith(".pdf"):
-            filepath = f"sample-data/{file}"
+            filepath = f"{file_dir}/{file}"
             pdf_files.append(filepath)
 
     with Pool(4) as p:
