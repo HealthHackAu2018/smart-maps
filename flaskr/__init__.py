@@ -26,7 +26,6 @@ def create_app(test_config=None):
 
     @app.route('/api/process-pdf', methods=['POST'])
     def process():
-        import pdb; pdb.set_trace()
         file = request.files.get('data')
         if file:
             path_to_file = f'instance/{file.filename}'
