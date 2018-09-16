@@ -8,6 +8,19 @@ from tqdm import tqdm
 
 from python_pdf_parser.smart_pdf_parser import process_pdf
 
+def parse_multiple_pdfs(file_dir):
+    pdf_files = []
+    for file in os.listdir(f"{file_dir}"):
+        if file.endswith(".pdf"):
+            filepath = f"{file_dir}/{file}"
+            pdf_files.append(filepath)
+
+    with Pool(2) as p:
+        proc_pdfs = list(tqdm(p.imap(process_pdf, pdf_files), desc='Processing PDF files', total=len(pdf_files)))
+
+    # Save file
+    pd.DataFrame(proc_pdfs).to_csv('output.csv', index=False)
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Process PDF files')
@@ -16,14 +29,4 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     file_dir = args.file_dir
-    pdf_files = []
-    for file in os.listdir(f"{file_dir}"):
-        if file.endswith(".pdf"):
-            filepath = f"{file_dir}/{file}"
-            pdf_files.append(filepath)
-
-    with Pool(4) as p:
-        proc_pdfs = list(tqdm(p.imap(process_pdf, pdf_files), desc='Processing PDF files', total=len(pdf_files)))
-
-    # Save file
-    pd.DataFrame(proc_pdfs).to_csv('output.csv', index=False)
+    parse_multiple_pdfs(file_dir)
