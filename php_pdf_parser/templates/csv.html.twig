@@ -1,0 +1,8 @@
+File name,{% for key, value in identifiers %}{{ key|raw}},{% endfor %}
+{% for key, value in testValues %}
+{{ key|raw}},
+        {% endfor %}
+        <br/>
+         {% for key, value in results %}
+{{ key }},{{ value|raw }} <br/>
+        {% endfor %}

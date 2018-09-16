@@ -1,0 +1,21 @@
+{% extends "base.html.twig" %}
+{% block title %}My cool blog posts{% endblock %}
+{% block body %}
+ <form action="{{ path('processdata') }}" method="post" id="create-application-formv1" enctype="multipart/form-data" data-abide>
+
+<fieldset>
+        <legend>Documentary Evidence</legend>
+
+       
+                <div class="box">
+        
+            <input id="fileupload-attachment" class='attachments' type="file" name="files-conf[]" data-url="/gumurrii-direct-entry/{{application.id|default(0)}}/upload/attachment/" multiple accept=".gif,.jpg,.jpeg,.png,.doc,.docx,.pdf" ></label>
+                </div>
+<div class="submit">
+    <button type="submit" class="radius success" name="action" value="submut" id="submit">
+    Submit</button>
+  </div>
+</fieldset>
+</form>
+
+{% endblock %}

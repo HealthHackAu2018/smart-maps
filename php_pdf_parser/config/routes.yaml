@@ -1,0 +1,6 @@
+index:
+    path: /
+    controller: App\Controller\DefaultController::index
+processdata:
+    path: /one/loading
+    controller: App\Controller\DefaultController::processData
