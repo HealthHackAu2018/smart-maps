@@ -21,7 +21,7 @@ class DefaultController extends Controller
 {
     /**
      * Index
-     * 
+     *
      * This is where the files can be uploaded
      *
      * @return page
@@ -65,6 +65,8 @@ class DefaultController extends Controller
             'WBC' => ')',
             'NEUTROPHILS%' => '%',
             'NEUTROPHILS' => ')',
+            'BAND NEUTROPHILS%' => '%',
+            'BAND NEUTROPHILS' => ')',
             'LYMPHOCYTES%' => '%',
             'LYMPHOCYTES' => ')',
             'MONOCYTES%' => '%',
@@ -82,6 +84,7 @@ class DefaultController extends Controller
         
         for ($i = 0; $i < count($_FILES['files-conf']['name']); $i++) {
             if (is_uploaded_file($_FILES['files-conf']["tmp_name"][$i])) {
+               // var_dump($_FILES['files-conf']['name'][$i]);
                 $returnValues[$_FILES['files-conf']['name'][$i]] = $this->getContent(
                     $_FILES['files-conf']["tmp_name"][$i],
                     $identifiers,
@@ -102,21 +105,34 @@ class DefaultController extends Controller
      **/
     private function getContent($fileName, $identifiers, $testValues, $csv = false)
     {
+        $isValidFile = true;
         if ($csv) {
             $returnValues = '';
         } else {
             $returnValues = array();
         }
         $rawText = Pdf::getText($fileName);
+
         $startOfTable = substr($rawText, strpos($rawText, 'EXAMINATION') + 11);
+        if (strpos($startOfTable, 'To ') !== false && strpos($startOfTable, 'To Follow') < 8) {
+            $isValidFile = false;
+            $thisValue = 'invalid values';
+            if ($csv) {
+                $returnValues .= $thisValue .',';
+            } else {
+                $returnValues[$K] = $thisValue;
+            }
+            if (!$isValidFile) {
+                return $returnValues;
+            }
+        }
         $digitalOffset = $this->digitalOffset($startOfTable);
         $startOfTable = substr($startOfTable, $digitalOffset);
-
+        
         $rawText = substr($rawText, 0, strpos($rawText, 'EXAMINATION'));
         $rawText = str_replace("\n", ' ', $rawText); // remove new lines
         $rawText = str_replace("\r", ' ', $rawText); // remove carriage returns
         
-        $isValidFile = true;
         foreach ($identifiers as $K => $D) {
             $start = strpos($rawText, $K);
             $end = strpos(substr($rawText, $start + strlen($K) + 1), $D);
@@ -144,6 +160,9 @@ class DefaultController extends Controller
         $startOfTable = str_replace("\n", '', $startOfTable); // remove new lines
         $startOfTable = trim(str_replace("\r", '', $startOfTable)); // remove carriage returns
         $endOfTable = strpos($startOfTable, 'For tests indicated by a hash');
+        if ($endOfTable === false) {
+            $endOfTable = strpos($startOfTable, 'DIGITAL IMAGES Now showing at IDEXX');
+        }
         $startOfTable = substr($startOfTable, 0, $endOfTable);
         foreach ($testValues as $K => $D) {
             // If this test value is not in the list, do not continue;
@@ -159,6 +178,14 @@ class DefaultController extends Controller
             }
 
             $hasNumberic = preg_match('/[0-9]/', $startOfTable, $matches, PREG_OFFSET_CAPTURE);
+            if (isset($matches[0]) && $matches[0][1] > 25) {
+                $currentMatch = $matches[0][1];
+                $matches[0][1] = strpos($startOfTable, 'To Follow');
+                if ($matches[0][1] === false) {
+                    $matches[0][1] = $currentMatch;
+                }
+            }
+            
             $end = strpos($startOfTable, ' ');
            
             if ($D == ' ') {
@@ -175,13 +202,21 @@ class DefaultController extends Controller
                 $end = strlen($startOfTable);
             } else {
                 $start = (int)$matches[0][1];
+                if (strpos($startOfTable, 'To Follow') !== false && (strpos($startOfTable, 'To Follow')  + 10) < 21) {
+                    $start = strpos($startOfTable, 'To Follow');
+                    $end = strlen('To Follow');
+                }
                 $endOfRow = strpos($startOfTable, $D);
             }
             if ($start == 0) {
                 $start = 1;
             }
             $thisValue = substr($startOfTable, $start-1, $end+1);
-
+            if (strpos($thisValue, 'To Follow') > 3 && strpos($thisValue, 'To Follow') + 10 < 21) {
+                $end = $end - 11;
+                $endOfRow = $endOfRow - 11;
+                $thisValue = substr($startOfTable, $start-1, $end+1);
+            }
             $startOfTable = trim(substr($startOfTable, $start + $endOfRow + 1));
             if ($csv) {
                 $returnValues .= $thisValue .',';
