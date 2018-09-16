@@ -77,6 +77,7 @@ app = create_app()
 dropzone = Dropzone(app)
 
 app.config['DROPZONE_UPLOAD_MULTIPLE'] = True
+app.config['DROPZONE_PARALLEL_UPLOADS'] = 50
 app.config['DROPZONE_ALLOWED_FILE_CUSTOM'] = True
 app.config['DROPZONE_ALLOWED_FILE_TYPE'] = 'application/pdf'
 app.config['DROPZONE_REDIRECT_VIEW'] = 'results' 
