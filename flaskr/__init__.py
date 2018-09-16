@@ -1,6 +1,10 @@
 import os
-from flask import Flask, request, jsonify
-from python_pdf_parser.smart_pdf_parser import process_pdf
+import shutil
+from flask import Flask, request, jsonify, render_template, redirect, session, url_for, send_file
+from flask_dropzone import Dropzone
+from flask_uploads import UploadSet, configure_uploads, DOCUMENTS, patch_request_class
+
+from python_read_data import parse_multiple_pdfs
 
 
 def create_app(test_config=None):
@@ -24,6 +28,29 @@ def create_app(test_config=None):
     except OSError:
         pass
 
+
+    @app.route('/', methods=['GET', 'POST'])
+    def index():
+        
+        # list to hold our uploaded image urls
+        file_urls = []
+        
+        if request.method == 'POST':
+            file_obj = request.files
+            for f in file_obj:
+                file = request.files.get(f)
+                
+                # save the file with to our pdfs folder
+                filename = pdfs.save(
+                    file,
+                    name=file.filename    
+                )
+                # append image urls
+                file_urls.append(pdfs.url(filename))
+                
+            return "uploading..."
+        return render_template('index.html')
+
     @app.route('/api/process-pdf', methods=['POST'])
     def process():
         file = request.files.get('data')
@@ -37,4 +64,25 @@ def create_app(test_config=None):
 
         return jsonify({'error': 'No PDF file provided'})
 
+    @app.route('/results')
+    def results():
+        parse_multiple_pdfs('flaskr/uploads')
+        shutil.rmtree('flaskr/uploads')
+        return send_file('../output.csv', attachment_filename='output.csv')
+
     return app
+
+
+app = create_app()
+dropzone = Dropzone(app)
+
+app.config['DROPZONE_UPLOAD_MULTIPLE'] = True
+app.config['DROPZONE_ALLOWED_FILE_CUSTOM'] = True
+app.config['DROPZONE_ALLOWED_FILE_TYPE'] = 'application/pdf'
+app.config['DROPZONE_REDIRECT_VIEW'] = 'results' 
+
+# Uploads settings
+app.config['UPLOADED_PDFS_DEST'] = os.getcwd() + '/flaskr/uploads'
+pdfs = UploadSet('pdfs', ['pdf'])
+configure_uploads(app, pdfs)
+patch_request_class(app)  # set maximum file size, default is 16MB
