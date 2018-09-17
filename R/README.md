@@ -34,7 +34,7 @@ Using full paths:
 
 `source("C:/Users/Bob/Documents/GitHub/smart-maps/R/scrape_pdfs.R")`
 
-`source("C:/Users/Bob/Documents/IndexxPdfs/2018_08")`
+`clean_pdf("C:/Users/Bob/Documents/IndexxPdfs/2018_08/")`
 
 ### Notes and assumptions
 
