@@ -5,11 +5,13 @@ date: "September 15, 2018"
 output: html_document
 ---
 
-Our aim is to scrape data from haematology pdf documents using R.
+Our aim is to scrape data from haematology pdf documents using R, and export the data into csv format.
 
-## Scraping pdfs
+## Testing out available R packages/functions to scrape pdfs
 
-First attempt: scraping pdf using the R package `tm` which requires the external application [xpdfreader](http://www.xpdfreader.com/download.html) which is a bit of a pain to install for little gain (compared to the alternative package, `pdftools`, below).
+First option: scraping pdf using the R package `tm`, which requires the external application [`xpdfreader`](http://www.xpdfreader.com/download.html). I followed [this](https://medium.com/@CharlesBordet/how-to-extract-and-clean-data-from-pdf-files-in-r-da11964e252e) helpful blog post to install `xpdfreader`.
+
+I found that `xpdfreader` was a bit of a pain to install (particularly on Windows), and even when it was, the output of the package `tm` was no different to the alternative R package. Therefore, I did not follow through with this option, especially given its dependency on having `xpdfreader` installed locally.
 
 ```{r}
 # install.packages("tm")
@@ -23,9 +25,10 @@ First attempt: scraping pdf using the R package `tm` which requires the external
 # head(doc)
 ```
 
-Second attempt: scraping pdf using the R package `pdftools`. I obtain similar results to `tm`, which is ultimately one big string you need to manipulate. Good help from [this](http://www.brodrigues.co/blog/2018-06-10-scraping_pdfs/) blog.
+Second attempt: scraping pdf using the R package `pdftools`. I obtain similar results to `tm`, which is ultimately one big string you need to manipulate. I found [this](http://www.brodrigues.co/blog/2018-06-10-scraping_pdfs/) blog particularly useful when writing my code, especially since it uses `tidyverse` ;)
 
 ```{r}
+# Load required packages
 library("pdftools")
 library("tidyverse")
 
@@ -35,21 +38,36 @@ raw_table <- pdf_text("../sample-data/B1705_2000606271.pdf")
 # Check structure
 head(raw_table)
 class(raw_table)
-raw_table[[1]]
+length(raw_table)
+# raw_table[[1]]
 
-# Split character based on new line
+# Split string based on new line characters
 split_table <- str_split(raw_table, "\r\n", simplify = TRUE)
+length(split_table)
 ```
 
+Using the function `pdf_text`, the data from the pdf is read in as one long character string. So we need to perform a lot of string manipulations to tidy it up. The first step was to split the string based on the new line characters `\r\n`, which is the equivalent of having one string per line in the pdf file.
+
+Now we don't need to keep all the data that we scraped from the pdf. What we DO need is the first two columns of data within the "FULL REPORT" (i.e. variables "RBC" down to "EXAMINATION"), and some of the header information ("Animal ID", "Case ID", "Unique ID", "Sex", "Age", "Collected", "Chip ID", "Reported"). We don't need any of the footer information.
+
+One of the issues we first come across is that the "EXAMINATION" entry may go over more than one line, which means when we split the string using the new line character, the information spread over several strings. For that reason, I will deal with the "EXAMINATION" variable separately.
+
+The header information has the opposite problem, where multiple variables are contained within the same string. So we will have to manually manipulate the header information too.
+
+Let's start by collecting the haematology data in the first two columns, i.e. all entries from "RBC" down to "BLOOD SMEAR", because we perform the same manipulations on these data:
 ```{r}
 # Collect haematology data
-table_start <- stringr::str_which(split_table, "RBC")
+# The term RBC may occur twice in the pdf document
+# We want the 1st instance, which has white space after it
+table_start <- stringr::str_which(split_table, "RBC\\s{2,}")
 table_end <- stringr::str_which(split_table, "BLOOD SMEAR")
 haem_table <- split_table[1, (table_start):(table_end)]
+
 # Replace white space with underscore then split based on underscore 
 haem_table <- str_replace_all(haem_table, "\\s{2,}", "_")
 haem_table <- str_split_fixed(haem_table, "_", n = 4)
 haem_table <- as.data.frame(haem_table)
+
 # Keep only first two columns
 haem_table <- haem_table %>% select(V1, V2)
 ```
@@ -75,7 +93,7 @@ meta_table <- as.data.frame(meta_table)
 ```
 
 ```{r}
-# Collect footer information, i.e. the "Examination" entry across multiple lines
+# Collect footer information, i.e. the "EXAMINATION" entry across multiple lines
 foot_start <- stringr::str_which(split_table, "EXAMINATION")
 foot_end <- stringr::str_which(split_table, "For tests indicated by a hash")
 foot_table <- split_table[1, (foot_start):(foot_end - 1)]
@@ -90,15 +108,17 @@ foot_table <- unlist(foot_table)
 foot_table <- as.data.frame(matrix(foot_table, ncol = 2, byrow = TRUE))
 ```
 
+Unfortunately I couldn't find a way to split the "EXAMINATION" entry from the footer information. So instead I have concatenated the footer with "EXAMINATION" entry into a single string. This is not ideal, but the only footer information that remains constant is the entry "For tests indicated by a hash (#) NATA accreditation does not cover the performance of this service", so I used this as a marker to end the footer information.
+
 So now we end up with three tables that we wish to join, `meta_table`, `haem_table`, and `foot_table`. The final step is to join them all together!
 ```{r}
 bind_rows(meta_table, haem_table, foot_table)
 ```
 
-## Function to clean pdf
+## Create a function to clean a single pdf
 
 Now we need to create a function to clean a pdf, that utilises all the above code, but performs everything in one step.
-```{r}
+```{r, message=FALSE, warning=FALSE}
 clean_pdf <- function(raw_pdf){
   split_table <- str_split(raw_pdf, "\r\n", simplify = TRUE)
   
@@ -138,22 +158,126 @@ clean_pdf <- function(raw_pdf){
   foot_table <- as.data.frame(matrix(foot_table, ncol = 2, byrow = TRUE))
 
   # Bind tables
-  pdf_table <- bind_rows(meta_table, haem_table, foot_table)
+  pdf_table <- bind_rows(meta_table, haem_table, foot_table) %>% 
+    dplyr::rename(Variable = V1, Value = V2)
 }
 
 # Test out the function
 test <- clean_pdf(raw_table)
 ```
 
-Now the REAL test is to try our code out on the other pdf files...
-```{r}
+Now the REAL test is to try our code out on the other pdf files:
+```{rE}
 raw_table_947 <- pdf_text("../sample-data/B1705_2000560947.pdf")
 test_947 <- clean_pdf(raw_table_947)
+dim(test_947)
 
 raw_table_948 <- pdf_text("../sample-data/B1705_2000560948.pdf")
 test_948 <- clean_pdf(raw_table_948)
+dim(test_948)
 
 raw_table_949 <- pdf_text("../sample-data/B1705_2000560949.pdf")
 test_949 <- clean_pdf(raw_table_949)
+dim(test_949)
 ```
 
+It works! However, through testing, we find that the number of variables returned is not equal for every pdf, which is something we need to keep in mind for the next stage of development.
+
+# Create a function to scrape all pdf files within a specified directory
+
+The next stage is to develop a function where the input is a directory that contains pdf files that require scraping. The function then cleans the data from each pdf, and combines the results into one file. I will use a for loop approach to perform this task. For each pdf file in the specified directory, we clean the data (as we have already done in the code above), then save the results into a new column of a data frame, where each column represents the data from a single pdf.
+
+Given the number of variables within a pdf is not constant, I will create an empty data frame that contains all the variables we need as the first column. At the end of each for loop, I will bind the scraped data to the empty data frame using the R function "full join" (so we keep all rows from the empty initial data frame, and all rows in the pdf column).
+
+```{r}
+library("pdftools")
+library("tidyverse")
+
+# Name the directory containing pdfs to test with
+pdfdir <- "../sample-data/"
+
+# Create a function where the pdf directory is the only argument
+scrape_pdfs <- function(pdfdir){
+  # Initiate data frame with all variables required
+  df <- data.frame(
+    Variable = c("Animal ID", "Case ID", "Unique ID", "Sex", "Age", "Collected",
+                 "Chip ID", "Reported", "RBC", "HAEMOGLOBIN", "HAEMATOCRIT",
+                 "MCV", "MCH", "MCHC", "PLATELETS", "PLATELET COUNT", "WBC",
+                 "NEUTROPHILS%", "NEUTROPHILS", "LYMPHOCYTES%", "LYMPHOCYTES",
+                 "MONOCYTES%", "MONOCYTES", "EOSINOPHILS%", "EOSINOPHILS",
+                 "BASOPHILS%", "BASOPHILS", "NUCLEATED RBCS", "PROTEIN PLASMA",
+                 "FIBRINOGEN", "PLASMA APPEARANCE", "BLOOD SMEAR",
+                 "EXAMINATION"))
+  
+  # List files that end in pdf
+  files <- list.files(path = pdfdir, pattern = "*.pdf$", full.names = TRUE)
+  for(i in files) {
+    
+    print(paste0("Scraping ", i))
+    raw_table <- pdf_text(i)
+    
+    # If pdf has more than one page, only anaylse first page
+    if(length(raw_table != 1)){
+      raw_table <- raw_table[1]
+    }
+    
+    split_table <- str_split(raw_table, "\r\n", simplify = TRUE)
+  
+    # Collect haematology data
+    table_start <- stringr::str_which(split_table, "RBC\\s{2,}")
+    table_end <- stringr::str_which(split_table, "BLOOD SMEAR")
+    haem_table <- split_table[1, (table_start):(table_end)] %>% 
+      str_replace_all(., "\\s{2,}", "_") %>%
+      str_split_fixed(., "_", n = 4) %>%
+      as.data.frame() %>%
+      select(V1, V2)
+    
+    # Collect header information for metadata
+    meta_start <- stringr::str_which(split_table, "Animal ID")
+    meta_end <- stringr::str_which(split_table, "Reported")
+    meta_table <- split_table[1, (meta_start):(meta_end)] %>%
+      str_replace_all(., "\\s{2,}", "_")
+    meta_table[1] <- gsub("(^.*)(Animal ID.*$)", "\\2", meta_table[1])
+    meta_table[2] <- gsub("(^.*)(Unique ID.*$)", "\\2", meta_table[2])
+    meta_table[3] <- gsub("(^Collected.*)\\s(Received.*$)", "\\1_\\2",
+                          meta_table[3])
+    meta_table <- str_split(meta_table, "_", simplify = FALSE) %>%
+      unlist(.) %>%
+      str_split_fixed(., ":\\s*", n = 2) %>%
+      as.data.frame()
+    
+    # Collect footer information
+    foot_start <- stringr::str_which(split_table, "EXAMINATION")
+    foot_end <- stringr::str_which(split_table, "For tests indicated by a hash")
+    foot_table <- split_table[1, (foot_start):(foot_end - 1)] %>%
+      str_replace_all(., "\\s{2,}", "")
+    foot_table[1] <- gsub("(^EXAMINATION)(.*$)", "\\1_\\2", foot_table[1])
+    foot_table <- unlist(foot_table) %>%
+      stringr::str_c(., sep = "", collapse = " ") %>%
+      str_split(., "_", simplify = FALSE) %>%
+      unlist(.)
+    foot_table <- as.data.frame(matrix(foot_table, ncol = 2, byrow = TRUE))
+    
+    # Save unique file name to create a unique column name
+    mycolname <- str_replace(i, "(^.+/)(.*)(.pdf$)", "\\2")
+    
+    # Bind three tables created from same pdf together
+    pdf_table <- suppressWarnings(bind_rows(meta_table, haem_table, 
+                                            foot_table)) %>% 
+      # N.B.rename using variable https://stackoverflow.com/questions/45472480/
+      dplyr::rename(Variable = V1, !!mycolname := V2)
+    
+    # Bind pdf_table to df
+    df <- suppressWarnings(full_join(df, pdf_table, by = "Variable"))
+    }
+  return(df)
+}
+
+test <- scrape_pdfs(pdfdir = "../sample-data/")
+str(test)
+
+```
+
+Excellent, it's working! Note I included the `suppressWarnings` function twice because I obtained many lines of warnings about binding factors with unequal levels. Also note during testing of this function, I included LOTS of print statements to help find where the errors occur.
+
+I think the next stage could be to turn this code into an R package? But it might not be necessary. I will see if adding the function alone in a separate R file, then sourcing it, will do the job.
