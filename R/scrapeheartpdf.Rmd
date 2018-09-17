@@ -216,7 +216,7 @@ scrape_pdfs <- function(pdfdir){
     print(paste0("Scraping ", i))
     raw_table <- pdf_text(i)
     
-    # If pdf has more than one page, only anaylse first page
+    # If pdf has more than one page, only analyse first page
     if(length(raw_table != 1)){
       raw_table <- raw_table[1]
     }
@@ -270,12 +270,15 @@ scrape_pdfs <- function(pdfdir){
     # Bind pdf_table to df
     df <- suppressWarnings(full_join(df, pdf_table, by = "Variable"))
     }
+  
+  # Save results to file
+  write.csv(df, file = "scraped_pdfs.csv", row.names = FALSE)
   return(df)
+  
 }
 
 test <- scrape_pdfs(pdfdir = "../sample-data/")
 str(test)
-
 ```
 
 Excellent, it's working! Note I included the `suppressWarnings` function twice because I obtained many lines of warnings about binding factors with unequal levels. Also note during testing of this function, I included LOTS of print statements to help find where the errors occur.
